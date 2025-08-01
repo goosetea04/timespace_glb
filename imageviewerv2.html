@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB Viewer - Orthographic with Orbiting Images</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-group {
+            margin-bottom: 10px;
+        }
+        
+        label {
+            display: inline-block;
+            width: 120px;
+            font-size: 12px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+        }
+        
+        input[type="file"] {
+            margin-top: 10px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        #glbLabel {
+            display: block;
+            background: #2196F3;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        #glbLabel:hover {
+            background: #1976D2;
+        }
+        
+        #imageLabel {
+            display: block;
+            background: #4CAF50;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        #imageLabel:hover {
+            background: #45a049;
+        }
+        
+        #status {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #ccc;
+        }
+        
+        #clearImages {
+            display: block;
+            background: #f44336;
+            color: white;
+            padding: 6px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 11px;
+            transition: background 0.3s;
+        }
+        
+        #clearImages:hover {
+            background: #da190b;
+        }
+        
+        /* Fullscreen popup styles */
+        #fullscreenPopup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #fullscreenImage {
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+        }
+        
+        #closePopup {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 40px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        
+        #closePopup:hover {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="controls">
+            <div class="control-group">
+                <label for="glbInput" id="glbLabel">Load GLB File</label>
+                <input type="file" id="glbInput" accept=".glb,.gltf" style="display: none;">
+            </div>
+            
+            <div class="control-group">
+                <label for="imageInput" id="imageLabel">Add Images to Orbit</label>
+                <input type="file" id="imageInput" accept="image/*" multiple style="display: none;">
+            </div>
+            
+            <div class="control-group">
+                <button id="clearImages">Clear All Images</button>
+            </div>
+            
+            <div class="control-group">
+                <label>Zoom:</label>
+                <input type="range" id="zoomSlider" min="0.1" max="10" step="0.1" value="5">
+                <span id="zoomValue">5</span>
+            </div>
+            
+            <div class="control-group">
+                <label>X Position:</label>
+                <input type="range" id="xSlider" min="-20" max="20" step="0.1" value="-10">
+                <span id="xValue">-10</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Y Position:</label>
+                <input type="range" id="ySlider" min="-20" max="20" step="0.1" value="0">
+                <span id="yValue">0</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Z Position:</label>
+                <input type="range" id="zSlider" min="-20" max="20" step="0.1" value="0">
+                <span id="zValue">0</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Orbit Speed:</label>
+                <input type="range" id="speedSlider" min="0" max="5" step="0.1" value="1">
+                <span id="speedValue">1</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Orbit Radius:</label>
+                <input type="range" id="radiusSlider" min="3" max="15" step="0.5" value="6">
+                <span id="radiusValue">6</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Model Scale:</label>
+                <input type="range" id="scaleSlider" min="0.1" max="5" step="0.1" value="1">
+                <span id="scaleValue">1</span>
+            </div>
+            
+            <div id="status">Loading circ.glb... Add images to orbit around the sphere</div>
+        </div>
+    </div>
+
+    <!-- Fullscreen popup -->
+    <div id="fullscreenPopup">
+        <span id="closePopup">&times;</span>
+        <img id="fullscreenImage" src="" alt="Fullscreen Image">
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        let scene, camera, renderer, model;
+        let orbitingImages = [];
+        let orbitSpeed = 1;
+        let orbitRadius = 6;
+        let modelScale = 1;
+        let time = 0;
+        let raycaster, mouse;
+        let container = document.getElementById('container');
+        
+        // Initialize Three.js
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x2a2a2a);
+            
+            // Orthographic Camera (positioned on -X axis looking toward origin)
+            const aspect = window.innerWidth / window.innerHeight;
+            const frustumSize = 10;
+            camera = new THREE.OrthographicCamera(
+                -frustumSize * aspect / 2, frustumSize * aspect / 2,
+                frustumSize / 2, -frustumSize / 2,
+                0.1, 1000
+            );
+            
+            // Position camera on -X axis looking toward the origin
+            camera.position.set(-10, 0, 0);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1;
+            
+            container.appendChild(renderer.domElement);
+            
+            // Lighting setup similar to Blender
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(-5, 5, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(5, -3, -5);
+            scene.add(fillLight);
+            
+            // Add a subtle grid for reference
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+            scene.add(gridHelper);
+            
+            // Initialize raycaster for mouse interaction
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            setupControls();
+            setupImageHandling();
+            setupMouseEvents();
+            loadHardcodedGLB();
+            
+            animate();
+        }
+        
+        function setupControls() {
+            const zoomSlider = document.getElementById('zoomSlider');
+            const xSlider = document.getElementById('xSlider');
+            const ySlider = document.getElementById('ySlider');
+            const zSlider = document.getElementById('zSlider');
+            const speedSlider = document.getElementById('speedSlider');
+            const radiusSlider = document.getElementById('radiusSlider');
+            const scaleSlider = document.getElementById('scaleSlider');
+            
+            const zoomValue = document.getElementById('zoomValue');
+            const xValue = document.getElementById('xValue');
+            const yValue = document.getElementById('yValue');
+            const zValue = document.getElementById('zValue');
+            const speedValue = document.getElementById('speedValue');
+            const radiusValue = document.getElementById('radiusValue');
+            const scaleValue = document.getElementById('scaleValue');
+            
+            zoomSlider.addEventListener('input', (e) => {
+                const zoom = parseFloat(e.target.value);
+                zoomValue.textContent = zoom;
+                updateCameraZoom(zoom);
+            });
+            
+            xSlider.addEventListener('input', (e) => {
+                const x = parseFloat(e.target.value);
+                xValue.textContent = x;
+                camera.position.x = x;
+                camera.lookAt(0, 0, 0);
+            });
+            
+            ySlider.addEventListener('input', (e) => {
+                const y = parseFloat(e.target.value);
+                yValue.textContent = y;
+                camera.position.y = y;
+                camera.lookAt(0, 0, 0);
+            });
+            
+            zSlider.addEventListener('input', (e) => {
+                const z = parseFloat(e.target.value);
+                zValue.textContent = z;
+                camera.position.z = z;
+                camera.lookAt(0, 0, 0);
+            });
+            
+            speedSlider.addEventListener('input', (e) => {
+                orbitSpeed = parseFloat(e.target.value);
+                speedValue.textContent = orbitSpeed;
+            });
+            
+            radiusSlider.addEventListener('input', (e) => {
+                orbitRadius = parseFloat(e.target.value);
+                radiusValue.textContent = orbitRadius;
+            });
+            
+            // Add the missing scale slider event listener
+            scaleSlider.addEventListener('input', (e) => {
+                modelScale = parseFloat(e.target.value);
+                scaleValue.textContent = modelScale;
+                updateModelScale();
+            });
+        }
+        
+        function updateCameraZoom(zoom) {
+            const aspect = window.innerWidth / window.innerHeight;
+            const frustumSize = zoom;
+            
+            camera.left = -frustumSize * aspect / 2;
+            camera.right = frustumSize * aspect / 2;
+            camera.top = frustumSize / 2;
+            camera.bottom = -frustumSize / 2;
+            
+            camera.updateProjectionMatrix();
+        }
+        
+        function updateModelScale() {
+            if (model) {
+                // Store the original auto-scale factor
+                if (!model.userData.originalScale) {
+                    model.userData.originalScale = model.scale.x;
+                }
+                
+                // Apply the manual scale multiplier to the original auto-scale
+                const finalScale = model.userData.originalScale * modelScale;
+                model.scale.setScalar(finalScale);
+            }
+        }
+        
+        function setupImageHandling() {
+            const glbInput = document.getElementById('glbInput');
+            const glbLabel = document.getElementById('glbLabel');
+            const imageInput = document.getElementById('imageInput');
+            const imageLabel = document.getElementById('imageLabel');
+            const clearButton = document.getElementById('clearImages');
+            
+            glbLabel.addEventListener('click', () => {
+                glbInput.click();
+            });
+            
+            glbInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    loadGLBFromFile(file);
+                }
+            });
+            
+            imageLabel.addEventListener('click', () => {
+                imageInput.click();
+            });
+            
+            imageInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                files.forEach(file => {
+                    if (file.type.startsWith('image/')) {
+                        addOrbitingImage(file);
+                    }
+                });
+            });
+            
+            clearButton.addEventListener('click', clearAllImages);
+        }
+        
+        function setupMouseEvents() {
+            const popup = document.getElementById('fullscreenPopup');
+            const fullscreenImage = document.getElementById('fullscreenImage');
+            const closeButton = document.getElementById('closePopup');
+            
+            renderer.domElement.addEventListener('click', onMouseClick);
+            
+            closeButton.addEventListener('click', () => {
+                popup.style.display = 'none';
+            });
+            
+            popup.addEventListener('click', (e) => {
+                if (e.target === popup) {
+                    popup.style.display = 'none';
+                }
+            });
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    popup.style.display = 'none';
+                }
+            });
+        }
+        
+        function onMouseClick(event) {
+            // Calculate mouse position in normalized device coordinates
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(orbitingImages.map(img => img.mesh));
+            
+            if (intersects.length > 0) {
+                const clickedObject = intersects[0].object;
+                const imageData = orbitingImages.find(img => img.mesh === clickedObject);
+                if (imageData) {
+                    showFullscreenImage(imageData.originalSrc);
+                }
+            }
+        }
+        
+        function showFullscreenImage(imageSrc) {
+            const popup = document.getElementById('fullscreenPopup');
+            const fullscreenImage = document.getElementById('fullscreenImage');
+            
+            fullscreenImage.src = imageSrc;
+            popup.style.display = 'flex';
+        }
+        
+        function addOrbitingImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Create texture from image
+                    const texture = new THREE.Texture(img);
+                    texture.needsUpdate = true;
+                    
+                    // Create plane geometry for the image
+                    const aspect = img.width / img.height;
+                    const width = aspect > 1 ? 2 : 2 * aspect;
+                    const height = aspect > 1 ? 2 / aspect : 2;
+                    
+                    const geometry = new THREE.PlaneGeometry(width, height);
+                    const material = new THREE.MeshLambertMaterial({ 
+                        map: texture, 
+                        transparent: true,
+                        side: THREE.DoubleSide
+                    });
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.castShadow = true;
+                    
+                    // Store image data
+                    const imageData = {
+                        mesh: mesh,
+                        angle: Math.random() * Math.PI * 2, // Random starting angle
+                        verticalOffset: (Math.random() - 0.5) * 4, // Random vertical offset
+                        originalSrc: e.target.result
+                    };
+                    
+                    orbitingImages.push(imageData);
+                    scene.add(mesh);
+                    
+                    updateStatus();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function clearAllImages() {
+            orbitingImages.forEach(imageData => {
+                scene.remove(imageData.mesh);
+                imageData.mesh.geometry.dispose();
+                imageData.mesh.material.map.dispose();
+                imageData.mesh.material.dispose();
+            });
+            orbitingImages = [];
+            updateStatus();
+        }
+        
+        function updateStatus() {
+            const status = document.getElementById('status');
+            const hasCustomModel = model && !model.userData?.isFallback;
+            const modelType = hasCustomModel ? 'Custom GLB model' : 'Fallback sphere';
+            status.textContent = `${modelType} loaded. ${orbitingImages.length} images orbiting. Click images for fullscreen.`;
+        }
+        
+        function loadHardcodedGLB() {
+            const status = document.getElementById('status');
+            status.textContent = 'Create fallback sphere. Use "Load GLB File" to load your model.';
+            
+            // Create fallback sphere immediately
+            createFallbackSphere();
+            updateStatus();
+        }
+        
+        function loadGLBFromFile(file) {
+            const status = document.getElementById('status');
+            status.textContent = 'Loading GLB file...';
+            
+            const loader = new THREE.GLTFLoader();
+            const url = URL.createObjectURL(file);
+            
+            loader.load(
+                url,
+                (gltf) => {
+                    // Remove previous model if exists
+                    if (model) {
+                        scene.remove(model);
+                    }
+                    
+                    model = gltf.scene;
+                    setupLoadedModel();
+                    updateStatus();
+                    URL.revokeObjectURL(url);
+                },
+                (progress) => {
+                    if (progress.total > 0) {
+                        const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                        status.textContent = `Loading: ${percent}%`;
+                    }
+                },
+                (error) => {
+                    status.textContent = 'Error loading GLB file';
+                    console.error('Error loading GLB:', error);
+                    URL.revokeObjectURL(url);
+                }
+            );
+        }
+        
+        function setupLoadedModel() {
+            // Enable shadows
+            let meshCount = 0;
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    meshCount++;
+                }
+            });
+            
+            // Center the model
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            model.position.sub(center);
+            
+            // Scale model to fit in view
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 4 / maxDim;
+            model.scale.setScalar(scale);
+            
+            // Store the original auto-scale for the manual scale slider
+            model.userData.originalScale = scale;
+            
+            // Apply current manual scale setting
+            updateModelScale();
+            
+            scene.add(model);
+        }
+        
+        function createFallbackSphere() {
+            const geometry = new THREE.SphereGeometry(2, 32, 32);
+            const material = new THREE.MeshLambertMaterial({ color: 0x4CAF50 });
+            model = new THREE.Mesh(geometry, material);
+            model.castShadow = true;
+            model.receiveShadow = true;
+            model.userData = { isFallback: true, originalScale: 1 }; // Mark as fallback and set original scale
+            scene.add(model);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.016 * orbitSpeed; // Assuming 60fps
+            
+            // Update orbiting images
+            orbitingImages.forEach((imageData, index) => {
+                const angle = imageData.angle + time + (index * 0.5); // Stagger the images
+                const x = Math.cos(angle) * orbitRadius;
+                const z = Math.sin(angle) * orbitRadius;
+                const y = imageData.verticalOffset + Math.sin(time + index) * 0.5; // Gentle vertical bobbing
+                
+                imageData.mesh.position.set(x, y, z);
+                
+                // Make images face the camera
+                imageData.mesh.lookAt(camera.position);
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const zoom = parseFloat(document.getElementById('zoomSlider').value);
+            
+            camera.left = -zoom * aspect / 2;
+            camera.right = zoom * aspect / 2;
+            camera.top = zoom / 2;
+            camera.bottom = -zoom / 2;
+            
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        window.addEventListener('resize', onWindowResize);
+        
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>

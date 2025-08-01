@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB Viewer - Orthographic -X View</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-group {
+            margin-bottom: 10px;
+        }
+        
+        label {
+            display: inline-block;
+            width: 120px;
+            font-size: 12px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+        }
+        
+        input[type="file"] {
+            margin-top: 10px;
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        
+        #fileLabel {
+            display: block;
+            background: #4CAF50;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        #fileLabel:hover {
+            background: #45a049;
+        }
+        
+        #status {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="controls">
+            <div class="control-group">
+                <label for="fileInput" id="fileLabel">Load GLB File</label>
+                <input type="file" id="fileInput" accept=".glb,.gltf" style="display: none;">
+            </div>
+            
+            <div class="control-group">
+                <label>Zoom:</label>
+                <input type="range" id="zoomSlider" min="0.1" max="10" step="0.1" value="5">
+                <span id="zoomValue">5</span>
+            </div>
+            
+            <div class="control-group">
+                <label>X Position:</label>
+                <input type="range" id="xSlider" min="-20" max="20" step="0.1" value="-10">
+                <span id="xValue">-10</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Y Position:</label>
+                <input type="range" id="ySlider" min="-20" max="20" step="0.1" value="0">
+                <span id="yValue">0</span>
+            </div>
+            
+            <div class="control-group">
+                <label>Z Position:</label>
+                <input type="range" id="zSlider" min="-20" max="20" step="0.1" value="0">
+                <span id="zValue">0</span>
+            </div>
+            
+            <div id="status">Drop GLB file here or use the button above</div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        let scene, camera, renderer, model;
+        let container = document.getElementById('container');
+        
+        // Initialize Three.js
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x2a2a2a);
+            
+            // Orthographic Camera (positioned on -X axis looking toward origin)
+            const aspect = window.innerWidth / window.innerHeight;
+            const frustumSize = 10;
+            camera = new THREE.OrthographicCamera(
+                -frustumSize * aspect / 2, frustumSize * aspect / 2,
+                frustumSize / 2, -frustumSize / 2,
+                0.1, 1000
+            );
+            
+            // Position camera on -X axis looking toward the origin
+            camera.position.set(-10, 0, 0);
+            camera.lookAt(0, 0, 0);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1;
+            
+            container.appendChild(renderer.domElement);
+            
+            // Lighting setup similar to Blender
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(-5, 5, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(5, -3, -5);
+            scene.add(fillLight);
+            
+            // Add a subtle grid for reference
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+            scene.add(gridHelper);
+            
+            setupControls();
+            setupFileHandling();
+            
+            animate();
+        }
+        
+        function setupControls() {
+            const zoomSlider = document.getElementById('zoomSlider');
+            const xSlider = document.getElementById('xSlider');
+            const ySlider = document.getElementById('ySlider');
+            const zSlider = document.getElementById('zSlider');
+            
+            const zoomValue = document.getElementById('zoomValue');
+            const xValue = document.getElementById('xValue');
+            const yValue = document.getElementById('yValue');
+            const zValue = document.getElementById('zValue');
+            
+            zoomSlider.addEventListener('input', (e) => {
+                const zoom = parseFloat(e.target.value);
+                zoomValue.textContent = zoom;
+                updateCameraZoom(zoom);
+            });
+            
+            xSlider.addEventListener('input', (e) => {
+                const x = parseFloat(e.target.value);
+                xValue.textContent = x;
+                camera.position.x = x;
+                camera.lookAt(0, 0, 0);
+            });
+            
+            ySlider.addEventListener('input', (e) => {
+                const y = parseFloat(e.target.value);
+                yValue.textContent = y;
+                camera.position.y = y;
+                camera.lookAt(0, 0, 0);
+            });
+            
+            zSlider.addEventListener('input', (e) => {
+                const z = parseFloat(e.target.value);
+                zValue.textContent = z;
+                camera.position.z = z;
+                camera.lookAt(0, 0, 0);
+            });
+        }
+        
+        function updateCameraZoom(zoom) {
+            const aspect = window.innerWidth / window.innerHeight;
+            const frustumSize = zoom;
+            
+            camera.left = -frustumSize * aspect / 2;
+            camera.right = frustumSize * aspect / 2;
+            camera.top = frustumSize / 2;
+            camera.bottom = -frustumSize / 2;
+            
+            camera.updateProjectionMatrix();
+        }
+        
+        function setupFileHandling() {
+            const fileInput = document.getElementById('fileInput');
+            const fileLabel = document.getElementById('fileLabel');
+            const status = document.getElementById('status');
+            
+            fileLabel.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    loadGLBFile(file);
+                }
+            });
+            
+            // Drag and drop functionality
+            container.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                container.style.backgroundColor = '#333';
+            });
+            
+            container.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                container.style.backgroundColor = '#1a1a1a';
+            });
+            
+            container.addEventListener('drop', (e) => {
+                e.preventDefault();
+                container.style.backgroundColor = '#1a1a1a';
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0 && (files[0].name.endsWith('.glb') || files[0].name.endsWith('.gltf'))) {
+                    loadGLBFile(files[0]);
+                }
+            });
+        }
+        
+        function loadGLBFile(file) {
+            const status = document.getElementById('status');
+            status.textContent = 'Loading GLB file...';
+            
+            const loader = new THREE.GLTFLoader();
+            const url = URL.createObjectURL(file);
+            
+            loader.load(
+                url,
+                (gltf) => {
+                    // Remove previous model if exists
+                    if (model) {
+                        scene.remove(model);
+                    }
+                    
+                    model = gltf.scene;
+                    
+                    // Enable shadows and log mesh info
+                    let meshCount = 0;
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            meshCount++;
+                            console.log(`Mesh ${meshCount}:`, child.name || 'Unnamed', child);
+                        }
+                    });
+                    
+                    console.log(`Total meshes loaded: ${meshCount}`);
+                    
+                    // Center the model (considering all parts)
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.sub(center);
+                    
+                    // Scale model to fit in view
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 4 / maxDim;
+                    model.scale.setScalar(scale);
+                    
+                    scene.add(model);
+                    
+                    status.textContent = `Loaded: ${file.name} (${meshCount} meshes)`;
+                    URL.revokeObjectURL(url);
+                },
+                (progress) => {
+                    if (progress.total > 0) {
+                        const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                        status.textContent = `Loading: ${percent}%`;
+                    }
+                },
+                (error) => {
+                    status.textContent = 'Error loading GLB file';
+                    console.error('Error loading GLB:', error);
+                    URL.revokeObjectURL(url);
+                }
+            );
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const zoom = parseFloat(document.getElementById('zoomSlider').value);
+            
+            camera.left = -zoom * aspect / 2;
+            camera.right = zoom * aspect / 2;
+            camera.top = zoom / 2;
+            camera.bottom = -zoom / 2;
+            
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        window.addEventListener('resize', onWindowResize);
+        
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
